@@ -27,14 +27,31 @@ Required tools:
 
 ## Build
 
+Build the kernel, BusyBox-based root filesystem, and initramfs image:
+
 ```bash
 make all
 ```
 
-## Test in QEMU
+The generated artifacts are written to `output/`:
+
+- `output/bzImage`
+- `output/jenteck-initramfs.cpio.gz`
+
+## Run in QEMU
+
+Start the built image with the helper script:
 
 ```bash
-scripts/run-qemu.sh
+./scripts/run-qemu.sh
+```
+
+This uses `qemu-system-x86_64` and boots Jenteck OS directly from the built kernel and initramfs.
+
+If you need to stop QEMU, use the terminal where it is running and press `Ctrl+C`, or terminate the process with:
+
+```bash
+pkill -f 'qemu-system-x86_64 -kernel.*output/bzImage'
 ```
 
 ## Structure
