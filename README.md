@@ -17,12 +17,12 @@ Install the required packages before building. On Debian/Ubuntu, run:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential flex bison libncurses-dev libssl-dev cpio xz-utils curl git qemu-system-x86
+sudo apt install -y build-essential flex bison libncurses-dev libssl-dev libelf-dev bc cpio xz-utils curl git qemu-system-x86
 ```
 
 Required tools:
 - bash, curl, tar, xz, gzip, make, gcc, git
-- `flex`, `bison`, `cpio`
+- `flex`, `bison`, `bc`, `cpio`
 - `qemu-system-x86_64` (optional for testing)
 
 ## Build

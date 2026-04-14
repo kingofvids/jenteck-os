@@ -24,14 +24,25 @@ check_command() {
   fi
 }
 
+check_header() {
+  local header="$1"
+  if ! printf '#include <%s>\nint main(){}\n' "$header" | gcc -x c - -o /dev/null >/dev/null 2>&1; then
+    echo "ERROR: required C header <$header> not found." >&2
+    echo "Install the appropriate development package and retry." >&2
+    missing=1
+  fi
+}
+
 check_kernel_dependencies() {
   missing=0
-  for cmd in curl tar xz gzip make gcc git flex bison cpio; do
+  for cmd in curl tar xz gzip make gcc git flex bison cpio bc; do
     check_command "$cmd"
   done
+  check_header libelf.h
+  check_header gelf.h
   if [[ $missing -ne 0 ]]; then
     echo >&2
-    echo >&2 "Required packages on Debian/Ubuntu: build-essential flex bison libncurses-dev libssl-dev cpio xz-utils"
+    echo >&2 "Required packages on Debian/Ubuntu: build-essential flex bison libncurses-dev libssl-dev libelf-dev bc cpio xz-utils"
     exit 1
   fi
 }
