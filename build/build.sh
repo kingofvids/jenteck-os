@@ -102,6 +102,9 @@ build_busybox() {
   pushd "$BUILD_DIR/busybox-${BUSYBOX_VERSION}" > /dev/null
   echo "Configuring BusyBox..."
   make defconfig
+  echo "Disabling BusyBox tc applet to avoid missing kernel traffic control headers..."
+  ./scripts/config --disable TC
+  make oldconfig >/dev/null 2>&1 || true
   echo "Building BusyBox..."
   make -j"$(nproc)"
   echo "Installing BusyBox into rootfs staging area..."
