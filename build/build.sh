@@ -16,6 +16,38 @@ BUSYBOX_URL="https://busybox.net/downloads/${BUSYBOX_TARBALL}"
 
 mkdir -p "$OUTPUT_DIR" "$BUILD_DIR" "$DOWNLOAD_DIR"
 
+check_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: required command '$1' not found." >&2
+    echo "Install the missing dependency and retry." >&2
+    missing=1
+  fi
+}
+
+check_kernel_dependencies() {
+  missing=0
+  for cmd in curl tar xz gzip make gcc git flex bison cpio; do
+    check_command "$cmd"
+  done
+  if [[ $missing -ne 0 ]]; then
+    echo >&2
+    echo >&2 "Required packages on Debian/Ubuntu: build-essential flex bison libncurses-dev libssl-dev cpio xz-utils"
+    exit 1
+  fi
+}
+
+check_busybox_dependencies() {
+  missing=0
+  for cmd in curl tar xz gzip make gcc git cpio; do
+    check_command "$cmd"
+  done
+  if [[ $missing -ne 0 ]]; then
+    echo >&2
+    echo >&2 "Required packages on Debian/Ubuntu: build-essential cpio xz-utils"
+    exit 1
+  fi
+}
+
 download_file() {
   local url="$1"
   local path="$2"
@@ -111,6 +143,7 @@ main() {
   local target="${1-}"
   case "$target" in
     ""|all)
+      check_kernel_dependencies
       download_file "$KERNEL_URL" "$DOWNLOAD_DIR/$KERNEL_TARBALL"
       download_file "$BUSYBOX_URL" "$DOWNLOAD_DIR/$BUSYBOX_TARBALL"
       build_kernel
@@ -118,14 +151,17 @@ main() {
       create_initramfs
       ;;
     kernel)
+      check_kernel_dependencies
       download_file "$KERNEL_URL" "$DOWNLOAD_DIR/$KERNEL_TARBALL"
       build_kernel
       ;;
     busybox)
+      check_busybox_dependencies
       download_file "$BUSYBOX_URL" "$DOWNLOAD_DIR/$BUSYBOX_TARBALL"
       build_busybox
       ;;
     rootfs)
+      check_busybox_dependencies
       download_file "$BUSYBOX_URL" "$DOWNLOAD_DIR/$BUSYBOX_TARBALL"
       prepare_rootfs
       ;;

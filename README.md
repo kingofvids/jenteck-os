@@ -13,10 +13,17 @@ This repository contains a reproducible build system for a minimal, initramfs-ba
 
 ## Requirements
 
+Install the required packages before building. On Debian/Ubuntu, run:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential flex bison libncurses-dev libssl-dev cpio xz-utils curl git qemu-system-x86
+```
+
+Required tools:
 - bash, curl, tar, xz, gzip, make, gcc, git
+- `flex`, `bison`, `cpio`
 - `qemu-system-x86_64` (optional for testing)
-- `build-essential`, `bison`, `flex`, `libncurses-dev`, `libssl-dev` (for kernel build)
-- `cpio`
 
 ## Build
 
