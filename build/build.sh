@@ -103,7 +103,12 @@ build_busybox() {
   echo "Configuring BusyBox..."
   make defconfig
   echo "Disabling BusyBox tc applet to avoid missing kernel traffic control headers..."
-  ./scripts/config --disable TC
+  if [[ -f .config ]]; then
+    sed -i 's/^CONFIG_TC=.*/CONFIG_TC=n/' .config
+    if ! grep -q '^CONFIG_TC=' .config; then
+      printf 'CONFIG_TC=n\n' >> .config
+    fi
+  fi
   make oldconfig >/dev/null 2>&1 || true
   echo "Building BusyBox..."
   make -j"$(nproc)"
