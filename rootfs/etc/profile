@@ -1,0 +1,2 @@
+export PS1='[jenteck \u@\h \W]\$ '
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin

@@ -1,0 +1,15 @@
+# Build artifacts
+output/
+downloads/
+
+# Archives
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+
+# Temporary files
+*.tmp
+*~
+.DS_Store
