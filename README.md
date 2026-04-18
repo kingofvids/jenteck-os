@@ -36,16 +36,35 @@ To build and run Jenteck OS on Windows, use Windows Subsystem for Linux (WSL).
 
 ### macOS
 
-On macOS, use Homebrew to install dependencies.
+On macOS, use Homebrew to install most dependencies.
 
 1. Install Homebrew: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
 2. Install required packages:
 
 ```bash
-brew install qemu gcc make bison flex ncurses openssl elfutils bc cpio xz curl git
+brew install qemu gcc make bison flex ncurses openssl bc cpio xz curl git
 ```
 
-Note: Building the Linux kernel on macOS may require additional cross-compilation tools or using a different compiler like LLVM.
+Note: The `elfutils` package (providing `libelf.h`) is Linux-specific and not available on macOS via Homebrew. To build the Linux kernel, you have two options:
+
+- **Option 1: Build elfutils from source** (advanced):
+  ```bash
+  git clone https://sourceware.org/git/elfutils.git
+  cd elfutils
+  autoreconf -i -f
+  ./configure --prefix=/usr/local
+  make
+  sudo make install
+  ```
+
+- **Option 2: Use Docker** (recommended for simplicity):
+  Install Docker for Mac, then run the build in an Ubuntu container:
+  ```bash
+  docker run --rm -v $(pwd):/workspace -w /workspace ubuntu:20.04 bash -c "
+  apt update && apt install -y build-essential flex bison libncurses-dev libssl-dev libelf-dev bc cpio xz-utils curl git &&
+  make all
+  "
+  ```
 
 ### Arch Linux
 
