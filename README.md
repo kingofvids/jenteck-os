@@ -25,6 +25,38 @@ Required tools:
 - `flex`, `bison`, `bc`, `cpio`
 - `qemu-system-x86_64` (optional for testing)
 
+## Platform-Specific Instructions
+
+### Windows
+
+To build and run Jenteck OS on Windows, use Windows Subsystem for Linux (WSL).
+
+1. Install WSL2 with Ubuntu: Open PowerShell as Administrator and run `wsl --install -d Ubuntu`, or install from the Microsoft Store.
+2. Launch the Ubuntu terminal and follow the Debian/Ubuntu instructions above.
+
+### macOS
+
+On macOS, use Homebrew to install dependencies.
+
+1. Install Homebrew: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
+2. Install required packages:
+
+```bash
+brew install qemu gcc make bison flex ncurses openssl libelf bc cpio xz curl git
+```
+
+Note: Building the Linux kernel on macOS may require additional cross-compilation tools or using a different compiler like LLVM.
+
+### Arch Linux
+
+On Arch Linux, install the required packages using pacman:
+
+```bash
+sudo pacman -S base-devel flex bison ncurses openssl libelf bc cpio xz curl git qemu-system-x86_64
+```
+
+Then proceed with the build instructions below.
+
 ## Build
 
 Build the kernel, BusyBox-based root filesystem, and initramfs image:
