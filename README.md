@@ -42,7 +42,7 @@ On macOS, use Homebrew to install dependencies.
 2. Install required packages:
 
 ```bash
-brew install qemu gcc make bison flex ncurses openssl libelf bc cpio xz curl git
+brew install qemu gcc make bison flex ncurses openssl elfutils bc cpio xz curl git
 ```
 
 Note: Building the Linux kernel on macOS may require additional cross-compilation tools or using a different compiler like LLVM.
