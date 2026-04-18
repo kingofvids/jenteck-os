@@ -34,6 +34,7 @@ To build and run Jenteck OS on Windows, use Windows Subsystem for Linux (WSL).
 1. Install WSL2 with Ubuntu: Open PowerShell as Administrator and run `wsl --install -d Ubuntu`, or install from the Microsoft Store.
 2. Launch the Ubuntu terminal and follow the Debian/Ubuntu instructions above.
 
+
 ### macOS
 
 On macOS, use Homebrew to install most dependencies.
@@ -49,22 +50,22 @@ Note: The `elfutils` package (providing `libelf.h`) is Linux-specific and not av
 
 - **Option 1: Build elfutils from source** (advanced):
   ```bash
-  git clone https://sourceware.org/git/elfutils.git
-  cd elfutils
-  autoreconf -i -f
-  ./configure --prefix=/usr/local
-  make
-  sudo make install
-  ```
+git clone https://sourceware.org/git/elfutils.git
+cd elfutils
+autoreconf -i -f
+./configure --prefix=/usr/local
+make
+sudo make install
+```
 
 - **Option 2: Use Docker** (recommended for simplicity):
   Install Docker for Mac, then run the build in an Ubuntu container:
   ```bash
-  docker run --rm -v $(pwd):/workspace -w /workspace ubuntu:20.04 bash -c "
-  apt update && apt install -y build-essential flex bison libncurses-dev libssl-dev libelf-dev bc cpio xz-utils curl git &&
-  make all
-  "
-  ```
+docker run --rm -v $(pwd):/workspace -w /workspace ubuntu:20.04 bash -c "
+apt update && apt install -y build-essential flex bison libncurses-dev libssl-dev libelf-dev bc cpio xz-utils curl git &&
+make all
+"
+```
 
 ### Arch Linux
 
