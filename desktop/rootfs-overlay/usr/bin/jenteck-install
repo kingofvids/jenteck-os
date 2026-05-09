@@ -1,0 +1,1008 @@
+#!/usr/bin/env python3
+# =============================================================================
+#  Jenteck OS Installer  —  jenteck-install
+#  A GTK3 graphical installer wizard.  Runs live from the ISO as root.
+#  Screens:
+#    0  Welcome
+#    1  Disk selection
+#    2  Partition layout
+#    3  Locale / timezone
+#    4  User account
+#    5  Summary / confirm
+#    6  Progress (install)
+#    7  Done / reboot
+# =============================================================================
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, GLib, Gdk, Pango
+import os, sys, subprocess, threading, json, shutil, time, re
+
+VERSION  = "1.0"
+SQUASHFS = "/run/live/medium/live/filesystem.squashfs"  # path on live ISO
+MOUNT_PT = "/mnt/jenteck-install"
+
+# ── Colours (Jenteck dark palette) ──────────────────────────────────────────
+CSS = b"""
+window, * {
+    background-color: #0e1420;
+    color: #e0e8f0;
+    font-family: "DejaVu Sans", sans-serif;
+}
+.sidebar {
+    background-color: #080d16;
+    border-right: 1px solid #1e2a3a;
+    padding: 0;
+    min-width: 200px;
+}
+.sidebar-step {
+    padding: 12px 20px;
+    font-size: 13px;
+    color: #6a7f99;
+    border-left: 3px solid transparent;
+}
+.sidebar-step.active {
+    color: #00e5ff;
+    border-left-color: #00e5ff;
+    background-color: #0d1828;
+    font-weight: bold;
+}
+.sidebar-step.done {
+    color: #50fa7b;
+    border-left-color: #50fa7b;
+}
+.page-title {
+    font-size: 22px;
+    font-weight: bold;
+    color: #00e5ff;
+    margin-bottom: 6px;
+}
+.page-subtitle {
+    font-size: 13px;
+    color: #8899aa;
+    margin-bottom: 24px;
+}
+.logo-label {
+    font-family: monospace;
+    font-size: 11px;
+    color: #00bcd4;
+}
+button.primary {
+    background-color: #00bcd4;
+    color: #000d1a;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 28px;
+    font-weight: bold;
+    font-size: 13px;
+}
+button.primary:hover { background-color: #00e5ff; }
+button.primary:disabled { background-color: #1e2a3a; color: #3a4a5a; }
+button.secondary {
+    background-color: transparent;
+    color: #8899aa;
+    border: 1px solid #1e2a3a;
+    border-radius: 5px;
+    padding: 8px 20px;
+    font-size: 13px;
+}
+button.secondary:hover { border-color: #00bcd4; color: #00e5ff; }
+entry {
+    background-color: #131820;
+    color: #e0e8f0;
+    border: 1px solid #1e2a3a;
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 13px;
+}
+entry:focus { border-color: #00bcd4; }
+combobox, treeview {
+    background-color: #131820;
+    color: #e0e8f0;
+}
+treeview:selected { background-color: #00bcd4; color: #000d1a; }
+.disk-row { padding: 10px 14px; }
+.warning-box {
+    background-color: #2a1a00;
+    border: 1px solid #ff6600;
+    border-radius: 6px;
+    padding: 12px 16px;
+    color: #ffaa44;
+}
+.error-label { color: #ff5555; font-size: 12px; }
+progressbar trough { background-color: #131820; border-radius: 4px; min-height: 18px; }
+progressbar progress { background-color: #00bcd4; border-radius: 4px; }
+.log-view {
+    background-color: #080d16;
+    color: #50fa7b;
+    font-family: monospace;
+    font-size: 11px;
+}
+.summary-key   { color: #8899aa; font-size: 12px; }
+.summary-value { color: #e0e8f0; font-size: 12px; font-weight: bold; }
+.done-title { font-size: 28px; font-weight: bold; color: #50fa7b; }
+"""
+
+LOGO = """\
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░ ░░░░░ ░  ░░░░░ ░░░░░░░░░
+  ░     ░ ░  ░     ░  ░  ░░░
+  ░ ░░░░░ ░  ░░░░░ ░  ░  ░░░
+  ░ ░     ░  ░     ░  ░  ░░░
+  ░ ░     ░░ ░░░░░ ░░░░░░░░░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░
+   JENTECK OS  ·  Installer"""
+
+STEPS = [
+    "Welcome",
+    "Select Disk",
+    "Partitions",
+    "Locale",
+    "User Account",
+    "Summary",
+    "Installing…",
+    "Complete",
+]
+
+TIMEZONES = [
+    "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Madrid",
+    "Europe/Rome", "Europe/Amsterdam", "Europe/Stockholm", "Europe/Warsaw",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Mexico_City",
+    "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore", "Asia/Kolkata",
+    "Asia/Dubai", "Asia/Seoul", "Asia/Jakarta",
+    "Australia/Sydney", "Australia/Melbourne", "Australia/Perth",
+    "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos",
+    "Pacific/Auckland", "Pacific/Honolulu",
+    "UTC",
+]
+
+LOCALES = [
+    "en_GB.UTF-8", "en_US.UTF-8", "en_AU.UTF-8", "en_CA.UTF-8",
+    "de_DE.UTF-8", "fr_FR.UTF-8", "es_ES.UTF-8", "it_IT.UTF-8",
+    "pt_BR.UTF-8", "ru_RU.UTF-8", "ja_JP.UTF-8", "zh_CN.UTF-8",
+    "ko_KR.UTF-8", "ar_SA.UTF-8", "pl_PL.UTF-8", "nl_NL.UTF-8",
+]
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, shell=True, check=True,
+                          capture_output=True, text=True, **kw)
+
+def run_out(cmd):
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return r.stdout.strip()
+
+def get_disks():
+    """Return list of (device, size_hr, model) tuples."""
+    disks = []
+    try:
+        out = run_out("lsblk -dno NAME,SIZE,MODEL --bytes 2>/dev/null || "
+                      "ls /sys/block")
+        for line in out.splitlines():
+            parts = line.split(None, 2)
+            if not parts:
+                continue
+            name = parts[0]
+            if name.startswith(("loop", "ram", "sr")):
+                continue
+            size_bytes = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+            model = parts[2].strip() if len(parts) > 2 else "Unknown"
+            size_hr = _fmt_size(size_bytes)
+            disks.append((f"/dev/{name}", size_hr, model))
+    except Exception:
+        pass
+    return disks
+
+def _fmt_size(b):
+    for unit in ("B","KiB","MiB","GiB","TiB"):
+        if b < 1024:
+            return f"{b:.1f} {unit}"
+        b /= 1024
+    return f"{b:.1f} PiB"
+
+def apply_css():
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
+# ── Main installer window ─────────────────────────────────────────────────────
+
+class JenteckInstaller(Gtk.Window):
+    def __init__(self):
+        super().__init__(title=f"Jenteck OS {VERSION} — Installer")
+        self.set_default_size(900, 600)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_resizable(False)
+        self.connect("delete-event", self._on_close)
+
+        # State
+        self.step        = 0
+        self.disk        = None
+        self.erase_disk  = True
+        self.timezone    = "Europe/London"
+        self.locale      = "en_GB.UTF-8"
+        self.username    = ""
+        self.password    = ""
+        self.hostname    = "jenteck"
+        self.autologin   = False
+        self._log_lines  = []
+
+        apply_css()
+        self._build_ui()
+        self.show_all()
+
+    # ── UI skeleton ──────────────────────────────────────────────────────────
+    def _build_ui(self):
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.add(hbox)
+
+        # Sidebar
+        self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.sidebar.get_style_context().add_class("sidebar")
+        self.sidebar.set_valign(Gtk.Align.FILL)
+
+        logo = Gtk.Label(label=LOGO)
+        logo.get_style_context().add_class("logo-label")
+        logo.set_margin_top(20)
+        logo.set_margin_bottom(16)
+        logo.set_justify(Gtk.Justification.CENTER)
+        self.sidebar.pack_start(logo, False, False, 0)
+
+        sep = Gtk.Separator()
+        sep.set_margin_bottom(8)
+        self.sidebar.pack_start(sep, False, False, 0)
+
+        self._step_labels = []
+        for i, name in enumerate(STEPS):
+            lbl = Gtk.Label(label=f"{'✓ ' if i < self.step else f'{i+1}. '}{name}")
+            lbl.set_halign(Gtk.Align.START)
+            lbl.get_style_context().add_class("sidebar-step")
+            self._step_labels.append(lbl)
+            self.sidebar.pack_start(lbl, False, False, 0)
+
+        hbox.pack_start(self.sidebar, False, False, 0)
+
+        # Content area
+        self.content = Gtk.Stack()
+        self.content.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT)
+        self.content.set_transition_duration(200)
+        self.content.set_margin_top(32)
+        self.content.set_margin_bottom(24)
+        self.content.set_margin_start(40)
+        self.content.set_margin_end(40)
+        hbox.pack_start(self.content, True, True, 0)
+
+        self._pages = [
+            self._page_welcome(),
+            self._page_disk(),
+            self._page_partitions(),
+            self._page_locale(),
+            self._page_user(),
+            self._page_summary(),
+            self._page_progress(),
+            self._page_done(),
+        ]
+        for i, page in enumerate(self._pages):
+            self.content.add_named(page, str(i))
+
+        self._go_to(0)
+
+    # ── Navigation ───────────────────────────────────────────────────────────
+    def _go_to(self, step):
+        self.step = step
+        self.content.set_visible_child_name(str(step))
+        for i, lbl in enumerate(self._step_labels):
+            ctx = lbl.get_style_context()
+            ctx.remove_class("active")
+            ctx.remove_class("done")
+            if i < step:
+                lbl.set_text(f"✓  {STEPS[i]}")
+                ctx.add_class("done")
+            elif i == step:
+                lbl.set_text(f"▶  {STEPS[i]}")
+                ctx.add_class("active")
+            else:
+                lbl.set_text(f"   {STEPS[i]}")
+        if step == 5:
+            self._refresh_summary()
+
+    def _nav_buttons(self, back_fn=None, next_fn=None,
+                     next_label="Next →", back_label="← Back"):
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        bar.set_margin_top(24)
+        bar.set_halign(Gtk.Align.END)
+        if back_fn:
+            btn_back = Gtk.Button(label=back_label)
+            btn_back.get_style_context().add_class("secondary")
+            btn_back.connect("clicked", lambda _: back_fn())
+            bar.pack_start(btn_back, False, False, 0)
+        if next_fn:
+            btn_next = Gtk.Button(label=next_label)
+            btn_next.get_style_context().add_class("primary")
+            btn_next.connect("clicked", lambda _: next_fn())
+            bar.pack_start(btn_next, False, False, 0)
+            self._btn_next = btn_next
+        return bar
+
+    # ── Page 0: Welcome ───────────────────────────────────────────────────────
+    def _page_welcome(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        title = Gtk.Label(label="Welcome to Jenteck OS")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+
+        sub = Gtk.Label(label="Born from scratch. This wizard will install Jenteck OS onto your computer.")
+        sub.get_style_context().add_class("page-subtitle")
+        sub.set_halign(Gtk.Align.START)
+
+        body = Gtk.Label()
+        body.set_markup(
+            "\n<b>Before you begin, make sure you have:</b>\n\n"
+            "  •  At least <b>10 GB</b> of free disk space\n"
+            "  •  A backup of any important data\n"
+            "  •  The disk you want to install onto is <b>not</b> your only boot drive\n\n"
+            "<b>What will be installed:</b>\n\n"
+            "  •  Jenteck OS 1.0  (from-scratch Linux)\n"
+            "  •  XFCE4 desktop environment\n"
+            "  •  Flatpak + Flathub (app store)\n"
+            "  •  jenfetch system info tool\n"
+            "  •  GRUB bootloader (UEFI + Legacy BIOS)\n"
+        )
+        body.set_halign(Gtk.Align.START)
+        body.set_line_wrap(True)
+
+        box.pack_start(title, False, False, 0)
+        box.pack_start(sub,   False, False, 0)
+        box.pack_start(body,  False, False, 0)
+        box.pack_end(self._nav_buttons(next_fn=lambda: self._go_to(1),
+                                       next_label="Begin →"),
+                     False, False, 0)
+        return box
+
+    # ── Page 1: Disk selection ────────────────────────────────────────────────
+    def _page_disk(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        title = Gtk.Label(label="Select Installation Disk")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+        sub = Gtk.Label(label="Choose which disk to install Jenteck OS onto.")
+        sub.get_style_context().add_class("page-subtitle")
+        sub.set_halign(Gtk.Align.START)
+
+        # Disk list
+        self._disk_store = Gtk.ListStore(str, str, str)   # device, size, model
+        self._disk_view  = Gtk.TreeView(model=self._disk_store)
+        self._disk_view.set_headers_visible(True)
+        for i, heading in enumerate(["Device", "Size", "Model"]):
+            col = Gtk.TreeViewColumn(heading,
+                                     Gtk.CellRendererText(), text=i)
+            col.set_expand(i == 2)
+            self._disk_view.append_column(col)
+        self._disk_view.connect("cursor-changed", self._on_disk_selected)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(160)
+        scroll.add(self._disk_view)
+
+        refresh_btn = Gtk.Button(label="⟳  Refresh")
+        refresh_btn.get_style_context().add_class("secondary")
+        refresh_btn.set_halign(Gtk.Align.START)
+        refresh_btn.connect("clicked", lambda _: self._load_disks())
+
+        warn = Gtk.Label(label="⚠  All data on the selected disk will be erased.")
+        warn.get_style_context().add_class("warning-box")
+        warn.set_halign(Gtk.Align.FILL)
+        warn.set_margin_top(12)
+
+        self._disk_err = Gtk.Label(label="")
+        self._disk_err.get_style_context().add_class("error-label")
+        self._disk_err.set_halign(Gtk.Align.START)
+
+        box.pack_start(title,       False, False, 0)
+        box.pack_start(sub,         False, False, 0)
+        box.pack_start(scroll,      False, False, 0)
+        box.pack_start(refresh_btn, False, False, 4)
+        box.pack_start(warn,        False, False, 0)
+        box.pack_start(self._disk_err, False, False, 4)
+        box.pack_end(self._nav_buttons(
+            back_fn=lambda: self._go_to(0),
+            next_fn=self._disk_next,
+        ), False, False, 0)
+
+        self._load_disks()
+        return box
+
+    def _load_disks(self):
+        self._disk_store.clear()
+        for dev, sz, model in get_disks():
+            self._disk_store.append([dev, sz, model])
+
+    def _on_disk_selected(self, tv):
+        sel = tv.get_selection()
+        model, it = sel.get_selected()
+        if it:
+            self.disk = model[it][0]
+
+    def _disk_next(self):
+        if not self.disk:
+            self._disk_err.set_text("Please select a disk first.")
+            return
+        self._disk_err.set_text("")
+        self._go_to(2)
+
+    # ── Page 2: Partitions ────────────────────────────────────────────────────
+    def _page_partitions(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        title = Gtk.Label(label="Partition Layout")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+        sub = Gtk.Label(label="Choose how the disk will be partitioned.")
+        sub.get_style_context().add_class("page-subtitle")
+        sub.set_halign(Gtk.Align.START)
+
+        # Radio buttons
+        self._radio_erase = Gtk.RadioButton.new_with_label(None,
+            "Erase entire disk and install Jenteck OS  (recommended)")
+        self._radio_manual = Gtk.RadioButton.new_with_label_from_widget(
+            self._radio_erase,
+            "Manual partitioning  (advanced — opens a shell)")
+        self._radio_erase.set_active(True)
+
+        info_erase = Gtk.Label()
+        info_erase.set_markup(
+            "  The disk will be formatted with:\n"
+            "  <b>Part 1</b> — EFI System Partition  (512 MiB, FAT32)\n"
+            "  <b>Part 2</b> — Root filesystem  (remaining space, ext4)\n"
+        )
+        info_erase.set_halign(Gtk.Align.START)
+        info_erase.set_margin_start(24)
+
+        swap_box = Gtk.Box(spacing=8)
+        swap_box.set_margin_start(24)
+        self._swap_check = Gtk.CheckButton(label="Create swap partition  (2 GiB)")
+        self._swap_check.set_active(True)
+        swap_box.pack_start(self._swap_check, False, False, 0)
+
+        box.pack_start(title,            False, False, 0)
+        box.pack_start(sub,              False, False, 0)
+        box.pack_start(self._radio_erase,False, False, 4)
+        box.pack_start(info_erase,       False, False, 4)
+        box.pack_start(swap_box,         False, False, 4)
+        box.pack_start(self._radio_manual,False,False,12)
+        box.pack_end(self._nav_buttons(
+            back_fn=lambda: self._go_to(1),
+            next_fn=lambda: self._go_to(3),
+        ), False, False, 0)
+        return box
+
+    # ── Page 3: Locale ────────────────────────────────────────────────────────
+    def _page_locale(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        title = Gtk.Label(label="Locale & Timezone")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+        sub = Gtk.Label(label="Set your language and region.")
+        sub.get_style_context().add_class("page-subtitle")
+        sub.set_halign(Gtk.Align.START)
+
+        grid = Gtk.Grid(row_spacing=12, column_spacing=16)
+        grid.set_margin_top(8)
+
+        # Timezone
+        tz_lbl = Gtk.Label(label="Timezone:")
+        tz_lbl.set_halign(Gtk.Align.END)
+        self._tz_combo = Gtk.ComboBoxText()
+        for tz in TIMEZONES:
+            self._tz_combo.append_text(tz)
+        self._tz_combo.set_active(0)
+        self._tz_combo.connect("changed",
+            lambda w: setattr(self, "timezone",
+                               w.get_active_text() or "Europe/London"))
+
+        # Locale
+        lc_lbl = Gtk.Label(label="Locale:")
+        lc_lbl.set_halign(Gtk.Align.END)
+        self._lc_combo = Gtk.ComboBoxText()
+        for lc in LOCALES:
+            self._lc_combo.append_text(lc)
+        self._lc_combo.set_active(0)
+        self._lc_combo.connect("changed",
+            lambda w: setattr(self, "locale",
+                               w.get_active_text() or "en_GB.UTF-8"))
+
+        # Keyboard layout
+        kb_lbl = Gtk.Label(label="Keyboard:")
+        kb_lbl.set_halign(Gtk.Align.END)
+        self._kb_combo = Gtk.ComboBoxText()
+        for kb in ["gb","us","de","fr","es","it","pt","ru","jp","cn"]:
+            self._kb_combo.append_text(kb)
+        self._kb_combo.set_active(0)
+
+        grid.attach(tz_lbl,         0, 0, 1, 1)
+        grid.attach(self._tz_combo, 1, 0, 1, 1)
+        grid.attach(lc_lbl,         0, 1, 1, 1)
+        grid.attach(self._lc_combo, 1, 1, 1, 1)
+        grid.attach(kb_lbl,         0, 2, 1, 1)
+        grid.attach(self._kb_combo, 1, 2, 1, 1)
+
+        box.pack_start(title, False, False, 0)
+        box.pack_start(sub,   False, False, 0)
+        box.pack_start(grid,  False, False, 0)
+        box.pack_end(self._nav_buttons(
+            back_fn=lambda: self._go_to(2),
+            next_fn=lambda: self._go_to(4),
+        ), False, False, 0)
+        return box
+
+    # ── Page 4: User account ──────────────────────────────────────────────────
+    def _page_user(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+
+        title = Gtk.Label(label="Create User Account")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+        sub = Gtk.Label(label="Set up the main user for your system.")
+        sub.get_style_context().add_class("page-subtitle")
+        sub.set_halign(Gtk.Align.START)
+
+        grid = Gtk.Grid(row_spacing=10, column_spacing=16)
+        grid.set_margin_top(8)
+
+        def lbl(text):
+            l = Gtk.Label(label=text)
+            l.set_halign(Gtk.Align.END)
+            return l
+
+        self._e_name     = Gtk.Entry(); self._e_name.set_placeholder_text("e.g. jenteck")
+        self._e_host     = Gtk.Entry(); self._e_host.set_placeholder_text("e.g. myjenteck")
+        self._e_pass     = Gtk.Entry(); self._e_pass.set_visibility(False)
+        self._e_pass2    = Gtk.Entry(); self._e_pass2.set_visibility(False)
+        self._e_pass2.set_placeholder_text("Confirm password")
+        self._autologin_check = Gtk.CheckButton(label="Auto-login on startup")
+
+        self._e_host.set_text("jenteck")
+
+        grid.attach(lbl("Username:"),       0, 0, 1, 1)
+        grid.attach(self._e_name,           1, 0, 1, 1)
+        grid.attach(lbl("Hostname:"),       0, 1, 1, 1)
+        grid.attach(self._e_host,           1, 1, 1, 1)
+        grid.attach(lbl("Password:"),       0, 2, 1, 1)
+        grid.attach(self._e_pass,           1, 2, 1, 1)
+        grid.attach(lbl(""),                0, 3, 1, 1)
+        grid.attach(self._e_pass2,          1, 3, 1, 1)
+        grid.attach(lbl(""),                0, 4, 1, 1)
+        grid.attach(self._autologin_check,  1, 4, 1, 1)
+
+        self._user_err = Gtk.Label(label="")
+        self._user_err.get_style_context().add_class("error-label")
+        self._user_err.set_halign(Gtk.Align.START)
+
+        box.pack_start(title,          False, False, 0)
+        box.pack_start(sub,            False, False, 0)
+        box.pack_start(grid,           False, False, 0)
+        box.pack_start(self._user_err, False, False, 4)
+        box.pack_end(self._nav_buttons(
+            back_fn=lambda: self._go_to(3),
+            next_fn=self._user_next,
+        ), False, False, 0)
+        return box
+
+    def _user_next(self):
+        name  = self._e_name.get_text().strip()
+        host  = self._e_host.get_text().strip()
+        pw1   = self._e_pass.get_text()
+        pw2   = self._e_pass2.get_text()
+
+        if not re.match(r'^[a-z_][a-z0-9_-]{0,31}$', name):
+            self._user_err.set_text(
+                "Username must be lowercase, start with a letter, no spaces.")
+            return
+        if not re.match(r'^[a-zA-Z0-9_-]+$', host):
+            self._user_err.set_text("Hostname contains invalid characters.")
+            return
+        if len(pw1) < 6:
+            self._user_err.set_text("Password must be at least 6 characters.")
+            return
+        if pw1 != pw2:
+            self._user_err.set_text("Passwords do not match.")
+            return
+
+        self.username   = name
+        self.hostname   = host
+        self.password   = pw1
+        self.autologin  = self._autologin_check.get_active()
+        self._user_err.set_text("")
+        self._go_to(5)
+
+    # ── Page 5: Summary ───────────────────────────────────────────────────────
+    def _page_summary(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        title = Gtk.Label(label="Installation Summary")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+        sub = Gtk.Label(label="Review your choices before installation begins.")
+        sub.get_style_context().add_class("page-subtitle")
+        sub.set_halign(Gtk.Align.START)
+
+        self._summary_grid = Gtk.Grid(row_spacing=10, column_spacing=24)
+        self._summary_grid.set_margin_top(8)
+
+        warn = Gtk.Label(
+            label="⚠  Clicking 'Install Now' will permanently erase the selected disk.")
+        warn.get_style_context().add_class("warning-box")
+        warn.set_halign(Gtk.Align.FILL)
+        warn.set_line_wrap(True)
+        warn.set_margin_top(16)
+
+        box.pack_start(title,                False, False, 0)
+        box.pack_start(sub,                  False, False, 0)
+        box.pack_start(self._summary_grid,   False, False, 0)
+        box.pack_start(warn,                 False, False, 0)
+        box.pack_end(self._nav_buttons(
+            back_fn=lambda: self._go_to(4),
+            next_fn=self._start_install,
+            next_label="Install Now",
+        ), False, False, 0)
+        return box
+
+    def _refresh_summary(self):
+        grid = self._summary_grid
+        for child in grid.get_children():
+            grid.remove(child)
+
+        rows = [
+            ("Disk",      self.disk or "—"),
+            ("Layout",    "Erase disk  (EFI + root + swap)"),
+            ("Timezone",  self.timezone),
+            ("Locale",    self.locale),
+            ("Username",  self.username),
+            ("Hostname",  self.hostname),
+            ("Autologin", "Yes" if self.autologin else "No"),
+        ]
+        for i, (k, v) in enumerate(rows):
+            kl = Gtk.Label(label=f"{k}:")
+            kl.get_style_context().add_class("summary-key")
+            kl.set_halign(Gtk.Align.END)
+            vl = Gtk.Label(label=v)
+            vl.get_style_context().add_class("summary-value")
+            vl.set_halign(Gtk.Align.START)
+            grid.attach(kl, 0, i, 1, 1)
+            grid.attach(vl, 1, i, 1, 1)
+        grid.show_all()
+
+    # ── Page 6: Progress ─────────────────────────────────────────────────────
+    def _page_progress(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        title = Gtk.Label(label="Installing Jenteck OS…")
+        title.get_style_context().add_class("page-title")
+        title.set_halign(Gtk.Align.START)
+
+        self._progress_label = Gtk.Label(label="Preparing…")
+        self._progress_label.set_halign(Gtk.Align.START)
+
+        self._progressbar = Gtk.ProgressBar()
+        self._progressbar.set_show_text(True)
+        self._progressbar.set_margin_top(8)
+
+        # Log view
+        self._log_buf  = Gtk.TextBuffer()
+        self._log_view = Gtk.TextView(buffer=self._log_buf)
+        self._log_view.set_editable(False)
+        self._log_view.set_cursor_visible(False)
+        self._log_view.get_style_context().add_class("log-view")
+        self._log_view.set_wrap_mode(Gtk.WrapMode.CHAR)
+
+        log_scroll = Gtk.ScrolledWindow()
+        log_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        log_scroll.set_min_content_height(220)
+        log_scroll.add(self._log_view)
+
+        box.pack_start(title,                False, False, 0)
+        box.pack_start(self._progress_label, False, False, 0)
+        box.pack_start(self._progressbar,    False, False, 0)
+        box.pack_start(log_scroll,           True,  True,  0)
+        return box
+
+    # ── Page 7: Done ─────────────────────────────────────────────────────────
+    def _page_done(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                      spacing=16)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+
+        icon = Gtk.Label(label="✓")
+        icon.get_style_context().add_class("done-title")
+
+        title = Gtk.Label(label="Installation Complete!")
+        title.get_style_context().add_class("done-title")
+
+        msg = Gtk.Label()
+        msg.set_markup(
+            "\n<b>Jenteck OS has been installed successfully.</b>\n\n"
+            "Remove the installation medium and click <b>Reboot</b>.\n"
+            "On first boot, XFCE4 will start automatically."
+        )
+        msg.set_justify(Gtk.Justification.CENTER)
+
+        btn_reboot = Gtk.Button(label="Reboot Now")
+        btn_reboot.get_style_context().add_class("primary")
+        btn_reboot.set_halign(Gtk.Align.CENTER)
+        btn_reboot.connect("clicked", self._do_reboot)
+
+        btn_close = Gtk.Button(label="Stay in Live Session")
+        btn_close.get_style_context().add_class("secondary")
+        btn_close.set_halign(Gtk.Align.CENTER)
+        btn_close.connect("clicked", lambda _: Gtk.main_quit())
+
+        box.pack_start(icon,       False, False, 0)
+        box.pack_start(title,      False, False, 0)
+        box.pack_start(msg,        False, False, 0)
+        box.pack_start(btn_reboot, False, False, 8)
+        box.pack_start(btn_close,  False, False, 0)
+        return box
+
+    # ── Installation logic ────────────────────────────────────────────────────
+    def _start_install(self):
+        self._go_to(6)
+        t = threading.Thread(target=self._install_worker, daemon=True)
+        t.start()
+
+    def _log(self, msg):
+        def _append():
+            end = self._log_buf.get_end_iter()
+            self._log_buf.insert(end, msg + "\n")
+            # Auto-scroll
+            adj = self._log_view.get_vadjustment()
+            adj.set_value(adj.get_upper())
+        GLib.idle_add(_append)
+
+    def _set_progress(self, fraction, label):
+        def _update():
+            self._progressbar.set_fraction(fraction)
+            self._progressbar.set_text(f"{int(fraction*100)}%")
+            self._progress_label.set_text(label)
+        GLib.idle_add(_update)
+
+    def _install_worker(self):
+        try:
+            self._do_install()
+            GLib.idle_add(lambda: self._go_to(7))
+        except Exception as e:
+            self._log(f"\n\n❌  INSTALLATION FAILED:\n{e}")
+            GLib.idle_add(lambda: self._progress_label.set_text(
+                f"Installation failed: {e}"))
+
+    def _do_install(self):
+        disk  = self.disk
+        use_swap = True  # always create swap for simplicity
+
+        # ── Step 1: Partition ─────────────────────────────────────────────
+        self._set_progress(0.02, "Partitioning disk…")
+        self._log(f"[1/9] Partitioning {disk}")
+        run(f"wipefs -a {disk}")
+        run(f"parted -s {disk} mklabel gpt")
+        run(f"parted -s {disk} mkpart ESP fat32 1MiB 513MiB")
+        run(f"parted -s {disk} set 1 esp on")
+        if use_swap:
+            run(f"parted -s {disk} mkpart swap linux-swap 513MiB 2561MiB")
+            run(f"parted -s {disk} mkpart root ext4 2561MiB 100%")
+        else:
+            run(f"parted -s {disk} mkpart root ext4 513MiB 100%")
+        run("partprobe " + disk)
+        time.sleep(1)
+
+        # Identify partitions (handle nvme0n1p1 vs sda1 naming)
+        def part(n):
+            if re.search(r'[0-9]$', disk):
+                return f"{disk}p{n}"
+            return f"{disk}{n}"
+
+        esp  = part(1)
+        swap = part(2) if use_swap else None
+        root = part(3) if use_swap else part(2)
+
+        # ── Step 2: Format ────────────────────────────────────────────────
+        self._set_progress(0.10, "Formatting partitions…")
+        self._log(f"[2/9] Formatting partitions")
+        run(f"mkfs.fat -F32 -n JENTECK_EFI {esp}")
+        if swap:
+            run(f"mkswap -L jenteck-swap {swap}")
+        run(f"mkfs.ext4 -L jenteck-root -F {root}")
+
+        # ── Step 3: Mount ─────────────────────────────────────────────────
+        self._set_progress(0.14, "Mounting target…")
+        self._log(f"[3/9] Mounting {root} → {MOUNT_PT}")
+        os.makedirs(MOUNT_PT, exist_ok=True)
+        run(f"mount {root} {MOUNT_PT}")
+        os.makedirs(f"{MOUNT_PT}/boot/efi", exist_ok=True)
+        run(f"mount {esp} {MOUNT_PT}/boot/efi")
+        if swap:
+            run(f"swapon {swap}")
+
+        # ── Step 4: Unsquash rootfs ───────────────────────────────────────
+        self._set_progress(0.18, "Copying system files (this takes a while)…")
+        self._log("[4/9] Extracting squashfs → target root")
+        # Stream unsquashfs progress
+        proc = subprocess.Popen(
+            f"unsquashfs -f -d {MOUNT_PT} {SQUASHFS}",
+            shell=True, stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE, text=True)
+        for line in proc.stdout:
+            line = line.strip()
+            if line:
+                self._log(f"  {line}")
+                # Parse [=====] 12345/23456 progress lines
+                m = re.search(r'(\d+)/(\d+)', line)
+                if m:
+                    done, total = int(m.group(1)), int(m.group(2))
+                    if total > 0:
+                        frac = 0.18 + 0.42 * (done / total)
+                        GLib.idle_add(lambda f=frac: (
+                            self._progressbar.set_fraction(f),
+                            self._progressbar.set_text(f"{int(f*100)}%"),
+                        ))
+        proc.wait()
+        if proc.returncode not in (0, 1):
+            raise RuntimeError(f"unsquashfs failed (exit {proc.returncode})")
+
+        # ── Step 5: Write /etc/fstab ──────────────────────────────────────
+        self._set_progress(0.62, "Writing fstab…")
+        self._log("[5/9] Generating /etc/fstab")
+        esp_uuid  = run_out(f"blkid -s UUID -o value {esp}")
+        root_uuid = run_out(f"blkid -s UUID -o value {root}")
+        swap_uuid = run_out(f"blkid -s UUID -o value {swap}") if swap else ""
+        fstab = (
+            f"# Jenteck OS fstab — generated by jenteck-install\n"
+            f"UUID={root_uuid}  /           ext4  defaults,noatime  0 1\n"
+            f"UUID={esp_uuid}   /boot/efi   vfat  umask=0077        0 2\n"
+        )
+        if swap_uuid:
+            fstab += f"UUID={swap_uuid}  none        swap  sw                0 0\n"
+        fstab += (
+            "tmpfs  /tmp  tmpfs  defaults,nosuid,nodev  0 0\n"
+            "proc   /proc proc   defaults                0 0\n"
+        )
+        with open(f"{MOUNT_PT}/etc/fstab", "w") as f:
+            f.write(fstab)
+
+        # ── Step 6: Locale / hostname / timezone ──────────────────────────
+        self._set_progress(0.66, "Configuring locale and timezone…")
+        self._log("[6/9] Locale, hostname, timezone")
+        with open(f"{MOUNT_PT}/etc/hostname", "w") as f:
+            f.write(self.hostname + "\n")
+        with open(f"{MOUNT_PT}/etc/locale.conf", "w") as f:
+            f.write(f"LANG={self.locale}\n")
+        tz_path = f"/usr/share/zoneinfo/{self.timezone}"
+        if os.path.exists(f"{MOUNT_PT}{tz_path}"):
+            run(f"ln -sf {tz_path} {MOUNT_PT}/etc/localtime")
+        # Keyboard
+        kb = self._kb_combo.get_active_text() or "gb"
+        with open(f"{MOUNT_PT}/etc/X11/xorg.conf.d/10-keyboard.conf", "w") as f:
+            f.write(f'Section "InputClass"\n'
+                    f'    Identifier "keyboard defaults"\n'
+                    f'    MatchIsKeyboard "on"\n'
+                    f'    Option "XkbLayout" "{kb}"\n'
+                    f'EndSection\n')
+
+        # ── Step 7: Create user ───────────────────────────────────────────
+        self._set_progress(0.72, f"Creating user '{self.username}'…")
+        self._log(f"[7/9] Creating user {self.username}")
+        # chroot commands via arch-chroot or plain chroot
+        def chroot(cmd):
+            full = (f"chroot {MOUNT_PT} /usr/bin/env -i "
+                    f"HOME=/root PATH=/usr/bin:/usr/sbin:/bin:/sbin "
+                    f"/bin/bash -c '{cmd}'")
+            r = subprocess.run(full, shell=True, capture_output=True, text=True)
+            if r.stdout: self._log(r.stdout.strip())
+            if r.stderr: self._log(r.stderr.strip())
+            return r
+
+        chroot(f"useradd -m -G wheel,audio,video,plugdev -s /bin/bash {self.username} 2>/dev/null || true")
+        chroot(f"echo '{self.username}:{self.password}' | chpasswd")
+        chroot("echo 'root:jenteck' | chpasswd")
+        # sudoers
+        sudoers = f"{MOUNT_PT}/etc/sudoers.d/jenteck"
+        os.makedirs(os.path.dirname(sudoers), exist_ok=True)
+        with open(sudoers, "w") as f:
+            f.write(f"%wheel ALL=(ALL:ALL) ALL\n{self.username} ALL=(ALL) NOPASSWD: /sbin/reboot,/sbin/poweroff\n")
+        os.chmod(sudoers, 0o440)
+
+        # Autologin
+        if self.autologin:
+            ldm_conf = f"{MOUNT_PT}/etc/lightdm/lightdm.conf"
+            try:
+                txt = open(ldm_conf).read()
+                txt = txt.replace(
+                    "autologin-guest=false",
+                    f"autologin-guest=false\nautologin-user={self.username}\nautologin-user-timeout=0"
+                )
+                open(ldm_conf, "w").write(txt)
+            except Exception:
+                pass
+
+        # ── Step 8: Install GRUB ──────────────────────────────────────────
+        self._set_progress(0.82, "Installing GRUB bootloader…")
+        self._log("[8/9] Installing GRUB")
+        # Bind mounts for chroot
+        for d in ("proc", "sys", "dev", "dev/pts", "run"):
+            os.makedirs(f"{MOUNT_PT}/{d}", exist_ok=True)
+            run(f"mount --bind /{d} {MOUNT_PT}/{d}")
+
+        # UEFI GRUB
+        chroot(
+            f"grub-install --target=x86_64-efi --efi-directory=/boot/efi "
+            f"--bootloader-id=JenteckOS --recheck {disk} 2>&1 || "
+            f"grub-install --target=i386-efi --efi-directory=/boot/efi "
+            f"--bootloader-id=JenteckOS --recheck {disk} 2>&1"
+        )
+        # Legacy BIOS GRUB (also installed on same disk for hybrid)
+        chroot(f"grub-install --target=i386-pc --recheck {disk} 2>&1 || true")
+        chroot("grub-mkconfig -o /boot/grub/grub.cfg 2>&1")
+
+        # Unmount binds
+        for d in reversed(("proc", "sys", "dev/pts", "dev", "run")):
+            try:
+                run(f"umount -l {MOUNT_PT}/{d}")
+            except Exception:
+                pass
+
+        # ── Step 9: Finalise ──────────────────────────────────────────────
+        self._set_progress(0.95, "Finalising…")
+        self._log("[9/9] Syncing and unmounting")
+        run("sync")
+        run(f"umount -l {MOUNT_PT}/boot/efi")
+        run(f"umount -l {MOUNT_PT}")
+        if swap:
+            run(f"swapoff {swap} 2>/dev/null || true")
+
+        self._set_progress(1.0, "Installation complete!")
+        self._log("\n✓  Jenteck OS installed successfully.")
+
+    # ── Reboot ───────────────────────────────────────────────────────────────
+    def _do_reboot(self, _=None):
+        try:
+            run("reboot")
+        except Exception:
+            pass
+        Gtk.main_quit()
+
+    def _on_close(self, *_):
+        if self.step >= 6 and self.step < 7:
+            dialog = Gtk.MessageDialog(
+                transient_for=self, flags=0,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.YES_NO,
+                text="Installation is in progress",
+            )
+            dialog.format_secondary_text(
+                "Closing now may leave your disk in an unusable state. Exit anyway?")
+            resp = dialog.run()
+            dialog.destroy()
+            if resp != Gtk.ResponseType.YES:
+                return True
+        Gtk.main_quit()
+        return False
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    if os.geteuid() != 0:
+        # Re-launch with sudo / pkexec if not root
+        print("Jenteck installer requires root. Re-launching with pkexec…")
+        os.execvp("pkexec", ["pkexec", sys.executable] + sys.argv)
+
+    app = JenteckInstaller()
+    app.connect("destroy", Gtk.main_quit)
+    Gtk.main()

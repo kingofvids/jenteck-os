@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  jenfetch — Jenteck OS system information tool
+#  Similar to neofetch but with the Jenteck logo and brand colours.
+#  Pure bash + standard coreutils — no external dependencies.
+#  Version: 1.0.0
+# =============================================================================
+
+VERSION="1.0.0"
+
+# ── Colour palette ─────────────────────────────────────────────────────────
+R='\033[0m'          # reset
+BOLD='\033[1m'
+C1='\033[38;5;45m'   # Jenteck cyan (logo)
+C2='\033[38;5;51m'   # lighter cyan (logo shadow)
+C3='\033[38;5;15m'   # white (label text)
+C4='\033[38;5;117m'  # soft blue (value text)
+C5='\033[38;5;196m'  # red accent (separator)
+
+# ── Logo lines (24-wide, each line manually aligned) ─────────────────────
+LOGO=(
+"${C1}  ░░░░░░░░░░░░░░░░░░░░░  ${R}"
+"${C1} ░${C2}██${C1}░${C2}█████${C1}░${C2}█${C1}░${C2}██${C1}░${C2}██████${C1}░${R}"
+"${C1} ░${C2}██${C1}░${C2}██${C1}░░░░${C2}██${C1}░${C2}██${C1}░░${C2}██${C1}░░░${R}"
+"${C1} ░${C2}██${C1}░${C2}████${C1}░░${C2}████${C1}░░${C2}██${C1}░░░${R}"
+"${C1} ░${C2}██${C1}░${C2}██${C1}░░░░${C2}██${C1}░${C2}██${C1}░░${C2}██${C1}░░░${R}"
+"${C1} ░${C2}██████${C1}░${C2}██${C1}░${C2}██${C1}░${C2}██████${C1}░${R}"
+"${C1}  ░░░░░░░░░░░░░░░░░░░░░  ${R}"
+"${C1}     ░░░░░░░░░░░░░░░     ${R}"
+"${C1}  ░░${C2}  J E N T E C K  ${C1}░░  ${R}"
+"${C1}     ░░░░░░░░░░░░░░░     ${R}"
+"${C1}  ░░░░░░░░░░░░░░░░░░░░░  ${R}"
+"${C5}  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  ${R}"
+)
+
+# ── Info gathering functions ───────────────────────────────────────────────
+get_os() {
+    if [[ -f /etc/jenteck-release ]]; then
+        source /etc/jenteck-release
+        echo "${NAME} ${VERSION_ID} (${ARCH:-$(uname -m)})"
+    else
+        echo "Jenteck OS"
+    fi
+}
+
+get_kernel() { uname -r; }
+
+get_uptime() {
+    local up
+    up=$(cat /proc/uptime 2>/dev/null | awk '{print $1}' | cut -d. -f1)
+    local days=$(( up / 86400 ))
+    local hours=$(( (up % 86400) / 3600 ))
+    local mins=$(( (up % 3600) / 60 ))
+    local secs=$(( up % 60 ))
+    local result=""
+    (( days  > 0 )) && result+="${days}d "
+    (( hours > 0 )) && result+="${hours}h "
+    (( mins  > 0 )) && result+="${mins}m "
+    result+="${secs}s"
+    echo "$result"
+}
+
+get_shell() { basename "${SHELL:-bash}"; }
+
+get_cpu() {
+    grep -m1 "model name" /proc/cpuinfo 2>/dev/null \
+        | sed 's/.*: //;s/(R)//g;s/(TM)//g;s/  */ /g' \
+        || echo "Unknown"
+}
+
+get_cpu_cores() {
+    local cores; cores=$(nproc 2>/dev/null || grep -c "^processor" /proc/cpuinfo)
+    echo "${cores} cores"
+}
+
+get_ram() {
+    awk '/MemTotal/{total=$2} /MemAvailable/{avail=$2}
+         END{
+           used=total-avail
+           printf "%d MiB / %d MiB\n", used/1024, total/1024
+         }' /proc/meminfo 2>/dev/null
+}
+
+get_disk() {
+    df -h / 2>/dev/null | awk 'NR==2{printf "%s / %s (%s used)", $3, $2, $5}' \
+        || echo "N/A"
+}
+
+get_hostname() { hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "jenteck"; }
+
+get_user() { echo "${USER:-$(id -un 2>/dev/null)}"; }
+
+get_packages() {
+    local count=0
+    # Count flatpak apps
+    if command -v flatpak &>/dev/null; then
+        count=$(flatpak list 2>/dev/null | wc -l)
+    fi
+    echo "${count} (flatpak)"
+}
+
+get_resolution() {
+    # Try fbset first (framebuffer), then xrandr
+    if command -v fbset &>/dev/null; then
+        fbset 2>/dev/null | awk '/geometry/{printf "%sx%s", $2, $3}'
+    else
+        echo "N/A"
+    fi
+}
+
+get_terminal() {
+    local t="${TERM_PROGRAM:-}"
+    [[ -z "$t" ]] && t="${TERM:-unknown}"
+    echo "$t"
+}
+
+get_arch() { uname -m; }
+
+# ── Colour swatch ─────────────────────────────────────────────────────────
+colour_blocks() {
+    local blk=""
+    for i in {0..7}; do blk+="\033[4${i}m   "; done
+    blk+="${R}  "
+    for i in {8..15}; do blk+="\033[48;5;${i}m   "; done
+    blk+="${R}"
+    echo -e "$blk"
+}
+
+# ── Print function ────────────────────────────────────────────────────────
+label() { echo -e "${C1}${BOLD}$1${R}${C3}: ${C4}$2${R}"; }
+separator() { echo -e "${C5}────────────────────────────${R}"; }
+
+# ── Main ──────────────────────────────────────────────────────────────────
+main() {
+    local USER_AT_HOST="${C1}${BOLD}$(get_user)${R}${C3}@${C1}${BOLD}$(get_hostname)${R}"
+    local OS="$(get_os)"
+    local KERNEL="$(get_kernel)"
+    local UPTIME="$(get_uptime)"
+    local SHELL_NAME="$(get_shell)"
+    local CPU="$(get_cpu)"
+    local CORES="$(get_cpu_cores)"
+    local RAM="$(get_ram)"
+    local DISK="$(get_disk)"
+    local PKGS="$(get_packages)"
+    local ARCH_VAL="$(get_arch)"
+    local TERM_VAL="$(get_terminal)"
+
+    local INFO=(
+        "${USER_AT_HOST}"
+        "$(separator)"
+        "$(label "OS"       "$OS")"
+        "$(label "Kernel"   "$KERNEL")"
+        "$(label "Arch"     "$ARCH_VAL")"
+        "$(label "Uptime"   "$UPTIME")"
+        "$(label "Shell"    "$SHELL_NAME")"
+        "$(label "Packages" "$PKGS")"
+        "$(label "CPU"      "$CPU ($CORES)")"
+        "$(label "RAM"      "$RAM")"
+        "$(label "Disk"     "$DISK")"
+        "$(label "Terminal" "$TERM_VAL")"
+        ""
+        "$(colour_blocks)"
+    )
+
+    echo ""
+    local max_logo="${#LOGO[@]}"
+    local max_info="${#INFO[@]}"
+    local total=$(( max_logo > max_info ? max_logo : max_info ))
+
+    for (( i=0; i<total; i++ )); do
+        local logo_line="${LOGO[$i]:-$(printf '%24s')}"
+        local info_line="${INFO[$i]:-}"
+        printf "  %b  %b\n" "$logo_line" "$info_line"
+    done
+    echo ""
+}
+
+# ── Help / version flags ──────────────────────────────────────────────────
+case "${1:-}" in
+    -v|--version) echo "jenfetch ${VERSION}"; exit 0 ;;
+    -h|--help)
+        echo "jenfetch ${VERSION} — Jenteck OS system info"
+        echo ""
+        echo "Usage: jenfetch [options]"
+        echo "  -v, --version   Print version"
+        echo "  -h, --help      This help"
+        echo "  --no-logo       Info only, no logo"
+        echo ""
+        exit 0 ;;
+    --no-logo)
+        label "OS"       "$(get_os)"
+        label "Kernel"   "$(get_kernel)"
+        label "Arch"     "$(get_arch)"
+        label "Uptime"   "$(get_uptime)"
+        label "Shell"    "$(get_shell)"
+        label "Packages" "$(get_packages)"
+        label "CPU"      "$(get_cpu) ($(get_cpu_cores))"
+        label "RAM"      "$(get_ram)"
+        label "Disk"     "$(get_disk)"
+        exit 0 ;;
+esac
+
+main "$@"
