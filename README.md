@@ -1,4 +1,4 @@
-
+<div align="center">
      ██╗███████╗███╗   ██╗████████╗███████╗ ██████╗██╗  ██╗
      ██║██╔════╝████╗  ██║╚══██╔══╝██╔════╝██╔════╝██║ ██╔╝
      ██║█████╗  ██╔██╗ ██║   ██║   █████╗  ██║     █████╔╝
@@ -7,8 +7,14 @@
  ╚════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
 Jenteck OS
 Born from scratch. Built for you.
+Show Image
+Show Image
+Show Image
+Show Image
+Show Image
 Two editions — Desktop and Server — built entirely from source. No parent distro.
 Desktop Edition · Server Edition · Building · Installer · Flatpak · jenfetch
+</div>
 
 What is Jenteck OS?
 Jenteck OS is a Linux distribution compiled entirely from upstream source tarballs using a custom cross-toolchain. There is no Debian, Arch, Ubuntu, or any other distribution underneath — every binary is built from scratch in the spirit of Linux From Scratch.
@@ -100,7 +106,7 @@ Building
 Both editions are built from this repository using the same build.sh script. The EDITION environment variable selects which one to produce.
 Host requirements
 You need a Debian or Ubuntu machine — physical, VM, or WSL2 — with internet access and roughly 30 GB of free space for the Desktop build, or 10 GB for Server.
- sudo apt update
+bashsudo apt update
 sudo apt install -y \
     build-essential bison flex texinfo gawk git wget curl \
     libelf-dev libssl-dev bc cpio cmake ninja-build \
@@ -111,7 +117,7 @@ sudo apt install -y \
 
 pip3 install --upgrade meson ninja
 Clone
-bash git clone https://github.com/kingofvids/jenteck-os/server (for server, if you would like desktop please use git clone https://github.com/kingofvids/jenteck-os/desktop)
+bashgit clone https://github.com/kingofvids/jenteck-os
 cd jenteck-os
 chmod +x build.sh
 Build commands
@@ -184,7 +190,7 @@ Desktop edition only. Server users: partition manually and run grub-install + gr
 When running the live Desktop session, double-click Install Jenteck OS on the desktop, or run:
 bashjenteck-install
 The GTK3 wizard covers eight steps:
-Step What it does1 — WelcomeOverview of what will be installed and requirements2 — Select DiskLive list of all drives — name, size, and model3 — Partition LayoutAuto: 512 MiB EFI + 2 GiB swap + remaining ext4 root. Or open a shell for manual partitioning.4 — Locale & TimezoneLanguage, timezone from a scrollable list, keyboard layout5 — User AccountUsername, password, hostname, optional autologin toggle6 — SummaryComplete review of every choice — nothing is written to disk until you confirm7 — InstallingLive scrolling log: partition → format → copy files → write fstab → create user → install GRUB8 — CompleteClick Reboot to boot into your new system, or stay in the live session
+StepWhat it does1 — WelcomeOverview of what will be installed and requirements2 — Select DiskLive list of all drives — name, size, and model3 — Partition LayoutAuto: 512 MiB EFI + 2 GiB swap + remaining ext4 root. Or open a shell for manual partitioning.4 — Locale & TimezoneLanguage, timezone from a scrollable list, keyboard layout5 — User AccountUsername, password, hostname, optional autologin toggle6 — SummaryComplete review of every choice — nothing is written to disk until you confirm7 — InstallingLive scrolling log: partition → format → copy files → write fstab → create user → install GRUB8 — CompleteClick Reboot to boot into your new system, or stay in the live session
 GRUB is installed for both UEFI and Legacy BIOS in a single pass — the installed system will boot on any machine regardless of firmware type.
 
 Installing apps
@@ -253,11 +259,13 @@ To upgrade any component, edit scripts/versions.sh — all download URLs and con
 
 The Jenteck ecosystem
 Jenteck OS is one part of a broader personal project:
-Project What it is Jenteck OS This — a from-scratch Linux distribution Jenteck Browser Custom browser with jtck:// protocol and .brs TLD Jenteck AI (Planet)Personal AI assistant — Planet 1.0 to 3.0, Gemini-backed Jenteck App StoreCurated catalogue of 60+ apps across 8 categories jenfetch System info tool, part of this repository (all other tools, ai, app store and browser will be included in later versions.)
+ProjectWhat it isJenteck OSThis — a from-scratch Linux distributionJenteck BrowserCustom browser with jtck:// protocol and .brs TLDJenteck AI (Planet)Personal AI assistant — Planet 1.0 to 3.0, Gemini-backedJenteck App StoreCurated catalogue of 60+ apps across 8 categoriesjenfetchSystem info tool, part of this repository
 🌍 jenteck.co.uk
 
 Licence
 Build scripts and tooling in this repository: MIT
 All compiled third-party software — the Linux kernel, GCC, XFCE4, GTK, Mesa, Flatpak, and everything else — retains its own upstream licence (GPL-2.0, GPL-3.0, LGPL, MIT, etc.). See each project's source for details.
 
+<div align="center">
 Made by kingofvids · jenteck.co.uk
+</div>
