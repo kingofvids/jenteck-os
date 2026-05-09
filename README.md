@@ -1,20 +1,9 @@
-<div align="center">
-     ██╗███████╗███╗   ██╗████████╗███████╗ ██████╗██╗  ██╗
-     ██║██╔════╝████╗  ██║╚══██╔══╝██╔════╝██╔════╝██║ ██╔╝
-     ██║█████╗  ██╔██╗ ██║   ██║   █████╗  ██║     █████╔╝
-██   ██║██╔══╝  ██║╚██╗██║   ██║   ██╔══╝  ██║     ██╔═██╗
-╚█████╔╝███████╗██║ ╚████║   ██║   ███████╗╚██████╗██║  ██╗
- ╚════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+
 Jenteck OS
 Born from scratch. Built for you.
-Show Image
-Show Image
-Show Image
-Show Image
-Show Image
+
 Two editions — Desktop and Server — built entirely from source. No parent distro.
 Desktop Edition · Server Edition · Building · Installer · Flatpak · jenfetch
-</div>
 
 What is Jenteck OS?
 Jenteck OS is a Linux distribution compiled entirely from upstream source tarballs using a custom cross-toolchain. There is no Debian, Arch, Ubuntu, or any other distribution underneath — every binary is built from scratch in the spirit of Linux From Scratch.
