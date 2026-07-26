@@ -26,7 +26,7 @@ Jenteck OS is a minimal, from-scratch Linux distribution built entirely from ups
 
 ---
 
-## Building on a Debian laptop (at your friend's house)
+## Building on a Debian based distro - preferably debian 12
 
 ### 1. Install host dependencies
 
