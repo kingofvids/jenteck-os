@@ -1,4 +1,4 @@
-> Jenteck OS #Xfce and other Desktop related things are only for the desktop build
+> Jenteck OS > Xfce and other Desktop related things are only for the desktop build
 > A from-scratch Linux distribution. No parent distro. Pure LFS spirit.
 
 ```
