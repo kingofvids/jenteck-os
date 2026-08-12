@@ -47,6 +47,7 @@ pip3 install meson ninja
 ```bash
 git clone https://github.com/kingofvids/jenteck-os
 cd jenteck-os
+cd server
 chmod +x build.sh
 ```
 
