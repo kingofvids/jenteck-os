@@ -52,7 +52,7 @@ pip3 install --upgrade meson ninja
 ```bash
 git clone https://github.com/kingofvids/jenteck-os
 cd jenteck-os
-cd desktop / cd server for the server build
+cd desktop or cd server for the server build
 chmod +x build.sh
 ```
 
