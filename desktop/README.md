@@ -32,7 +32,7 @@ from upstream source tarballs — **no Debian, no Arch, no Ubuntu base**.
 
 ---
 
-## Building on a Debian laptop - preferably debian 12
+## Building on an Debian-based Linux Machine - Reqiured for compilation
 
 ### 1. Install host packages
 
