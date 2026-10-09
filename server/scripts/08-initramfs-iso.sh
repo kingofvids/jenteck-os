@@ -106,9 +106,9 @@ assemble_iso() {
 
     xorriso -as mkisofs \
         -volid "JENTECK_OS_1_0" \
-        -isohybrid-mbr /usr/lib/grub/i386-pc/isohdpfx.bin \
+        -isohybrid-mbr /usr/lib/grub/i386-pc/boot_hybrid.img \
         -c boot/grub/boot.cat \
-        -b boot/grub/core.img \
+        -b boot/grub/eltorito.img \
             -no-emul-boot \
             -boot-load-size 4 \
             -boot-info-table \
