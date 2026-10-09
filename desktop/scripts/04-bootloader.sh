@@ -84,8 +84,16 @@ EOF
         linux echo all_video gfxmenu gfxterm gfxterm_background \
         loadenv loopback minicmd ext2 search test true gzio"
 
+    local EMBED="${BUILD_DIR}/work/grub-embed.cfg"
+    cat > "${EMBED}" << 'EOF2'
+search --no-floppy --file --set=root /boot/grub/grub.cfg
+set prefix=($root)/boot/grub
+configfile $prefix/grub.cfg
+EOF2
+
     if [[ "$ARCH" == "x86_64" ]]; then
         grub-mkimage \
+            --config="${EMBED}" \
             --format=x86_64-efi \
             --output="${ISO_STAGING}/EFI/BOOT/BOOTX64.EFI" \
             --prefix="/boot/grub" \
@@ -93,6 +101,7 @@ EOF
 
         # Also provide ia32 EFI for older UEFI firmware on 64-bit machines
         grub-mkimage \
+            --config="${EMBED}" \
             --format=i386-efi \
             --output="${ISO_STAGING}/EFI/BOOT/BOOTIA32.EFI" \
             --prefix="/boot/grub" \
@@ -100,17 +109,18 @@ EOF
     else
         # 32-bit build: i386-efi
         grub-mkimage \
+            --config="${EMBED}" \
             --format=i386-efi \
             --output="${ISO_STAGING}/EFI/BOOT/BOOTIA32.EFI" \
             --prefix="/boot/grub" \
             ${GRUB_MODS}
     fi
 
-    # ── GRUB BIOS core image ──────────────────────────────────────────────
-    info "Building GRUB BIOS core image …"
+    # ── GRUB BIOS El Torito image (cdboot.img + core.img) ─────────────────
+    info "Building GRUB BIOS El Torito image …"
     grub-mkimage \
-        --format=i386-pc \
-        --output="${ISO_STAGING}/boot/grub/core.img" \
+        --format=i386-pc-eltorito \
+        --output="${ISO_STAGING}/boot/grub/eltorito.img" \
         --prefix="/boot/grub" \
         biosdisk iso9660 ${GRUB_MODS}
 
@@ -120,17 +130,13 @@ EOF
     # ── EFI FAT image (required by UEFI spec) ────────────────────────────
     info "Creating EFI system partition image …"
     local ESP="${ISO_STAGING}/boot/efi.img"
-    dd if=/dev/zero of="${ESP}" bs=1M count=4 2>/dev/null
+    dd if=/dev/zero of="${ESP}" bs=1M count=16 2>/dev/null
     mkfs.fat -F 16 "${ESP}" >/dev/null
-    local MNT; MNT=$(mktemp -d)
-    sudo mount "${ESP}" "${MNT}"
-    sudo mkdir -p "${MNT}/EFI/BOOT"
+    mmd -i "${ESP}" ::EFI ::EFI/BOOT
     if [[ "$ARCH" == "x86_64" ]]; then
-        sudo cp "${ISO_STAGING}/EFI/BOOT/BOOTX64.EFI" "${MNT}/EFI/BOOT/"
+        mcopy -i "${ESP}" "${ISO_STAGING}/EFI/BOOT/BOOTX64.EFI" ::EFI/BOOT/
     fi
-    sudo cp "${ISO_STAGING}/EFI/BOOT/BOOTIA32.EFI" "${MNT}/EFI/BOOT/"
-    sudo umount "${MNT}"
-    rmdir "${MNT}"
+    mcopy -i "${ESP}" "${ISO_STAGING}/EFI/BOOT/BOOTIA32.EFI" ::EFI/BOOT/
 
     # Copy memtest86+ if available on host
     [[ -f /boot/memtest86+.bin ]] && \
