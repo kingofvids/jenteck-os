@@ -40,7 +40,12 @@ done
 
 # Find and mount the live medium
 LIVE_MEDIUM=""
-for dev in /dev/sr0 /dev/sr1 /dev/sda /dev/sdb /dev/sdc /dev/vda; do
+for sysdev in /sys/block/*; do
+    name="${sysdev##*/}"
+    case "$name" in
+        loop*|ram*) continue ;;
+    esac
+    dev="/dev/$name"
     if mount -o ro "$dev" /mnt/live 2>/dev/null; then
         if [ -f /mnt/live/live/filesystem.squashfs ]; then
             LIVE_MEDIUM="$dev"
