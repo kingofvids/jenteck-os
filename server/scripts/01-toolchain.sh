@@ -83,7 +83,6 @@ build_toolchain() {
           --enable-kernel=4.14 --with-headers="${ROOTFS}/usr/include"
           libc_cv_slibdir=/usr/lib
       )
-      [[ "$ARCH" == "i686" ]] && GLIBC_OPTS+=(--host=i686-linux-gnu)
       "../glibc-${GLIBC_VER}/configure" "${GLIBC_OPTS[@]}"
       make -j"${JOBS}"
       make DESTDIR="${ROOTFS}" install
