@@ -113,9 +113,11 @@ echo 3 > /proc/sys/kernel/printk 2>/dev/null
 # Hostname
 hostname "$(cat /etc/hostname 2>/dev/null || echo jenteck)"
 
-# Network (basic DHCP on eth0/enp*)
-for iface in eth0 ens3 enp0s3 enp2s0; do
-    ip link set "$iface" up 2>/dev/null && \
+# Network: interface names vary by firmware and PCI topology.
+for iface_path in /sys/class/net/*; do
+    iface="${iface_path##*/}"
+    [[ "$iface" == "lo" ]] && continue
+    ip link set "$iface" up 2>/dev/null || continue
     udhcpc -i "$iface" -n -q 2>/dev/null && break
 done
 
