@@ -49,7 +49,7 @@ build_toolchain() {
 
     local GCC_OPTS=(
         --prefix="${TC}" --target="${TARGET}" --with-sysroot="${ROOTFS}"
-        --with-newlib --without-headers --enable-languages=c,c++
+        --with-newlib --without-headers --enable-languages=c
         --disable-nls --disable-shared --disable-multilib
         --disable-decimal-float --disable-threads --disable-libatomic
         --disable-libgomp --disable-libquadmath --disable-libssp
@@ -86,6 +86,18 @@ build_toolchain() {
       "../glibc-${GLIBC_VER}/configure" "${GLIBC_OPTS[@]}"
       make -j"${JOBS}"
       make DESTDIR="${ROOTFS}" install
+    popd >/dev/null
+
+    # Build the C++ runtime only after the target Glibc is installed.
+    info "Building final GCC with libstdc++ …"
+    mkdir -p "${WORK}/gcc-final-build"
+    pushd "${WORK}/gcc-final-build" >/dev/null
+      "../gcc-${GCC_VER}/configure" \
+        --prefix="${TC}" --target="${TARGET}" --with-sysroot="${ROOTFS}" \
+        --with-build-sysroot="${ROOTFS}" --enable-languages=c,c++ \
+        --disable-nls --disable-multilib --disable-libsanitizer
+      make -j"${JOBS}" all-gcc all-target-libgcc all-target-libstdc++-v3
+      make install-gcc install-target-libgcc install-target-libstdc++-v3
     popd >/dev/null
 
     info "✔ Toolchain complete → ${TC}/bin/${TARGET}-gcc"
