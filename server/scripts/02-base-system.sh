@@ -94,11 +94,23 @@ build_base_system() {
       make DESTDIR="${ROOTFS}" install
     popd >/dev/null
 
-    # ── Essential symlinks & dirs ────────────────────────────────────────────
-    ln -sf usr/bin  "${ROOTFS}/bin"
-    ln -sf usr/sbin "${ROOTFS}/sbin"
-    ln -sf usr/lib  "${ROOTFS}/lib"
-    [[ "$ARCH" == "x86_64" ]] && ln -sf usr/lib "${ROOTFS}/lib64"
+    # ── Unified /usr layout ─────────────────────────────────────────────────
+    # Move early BusyBox directories before creating compatibility links.
+    # ln against an existing directory creates nested links instead of replacing it.
+    mkdir -p "${ROOTFS}/usr"/{bin,sbin,lib}
+    for dir in bin sbin lib lib64; do
+        if [[ -d "${ROOTFS}/${dir}" && ! -L "${ROOTFS}/${dir}" ]]; then
+            dest="${ROOTFS}/usr/lib"
+            [[ "${dir}" == "bin" ]] && dest="${ROOTFS}/usr/bin"
+            [[ "${dir}" == "sbin" ]] && dest="${ROOTFS}/usr/sbin"
+            cp -a "${ROOTFS}/${dir}/." "${dest}/"
+            rmdir "${ROOTFS}/${dir}"
+        fi
+    done
+    ln -s usr/bin  "${ROOTFS}/bin"
+    ln -s usr/sbin "${ROOTFS}/sbin"
+    ln -s usr/lib  "${ROOTFS}/lib"
+    [[ "$ARCH" == "x86_64" ]] && ln -s usr/lib "${ROOTFS}/lib64"
     chmod 1777 "${ROOTFS}/tmp"
 
     info "✔ Base system complete."

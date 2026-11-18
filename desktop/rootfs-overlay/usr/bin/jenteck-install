@@ -900,18 +900,22 @@ class JenteckInstaller(Gtk.Window):
         self._set_progress(0.72, f"Creating user '{self.username}'…")
         self._log(f"[7/9] Creating user {self.username}")
         # chroot commands via arch-chroot or plain chroot
-        def chroot(cmd):
-            full = (f"chroot {MOUNT_PT} /usr/bin/env -i "
-                    f"HOME=/root PATH=/usr/bin:/usr/sbin:/bin:/sbin "
-                    f"/bin/bash -c '{cmd}'")
-            r = subprocess.run(full, shell=True, capture_output=True, text=True)
+        def chroot(cmd, *, input_text=None):
+            r = subprocess.run(
+                ["chroot", MOUNT_PT, "/usr/bin/env", "-i",
+                 "HOME=/root", "PATH=/usr/bin:/usr/sbin:/bin:/sbin",
+                 "/bin/bash", "-c", cmd],
+                input=input_text, capture_output=True, text=True)
             if r.stdout: self._log(r.stdout.strip())
             if r.stderr: self._log(r.stderr.strip())
-            return r
+            if r.returncode:
+                raise RuntimeError(f"chroot command failed: {cmd}")
 
-        chroot(f"useradd -m -G wheel,audio,video,plugdev -s /bin/bash {self.username} 2>/dev/null || true")
-        chroot(f"echo '{self.username}:{self.password}' | chpasswd")
-        chroot("echo 'root:jenteck' | chpasswd")
+        chroot(f"useradd -m -G wheel,audio,video,plugdev -s /bin/bash {self.username}")
+        # Pass credentials via stdin, not through shell-interpolated text.
+        chroot("chpasswd", input_text=f"{self.username}:{self.password}\n")
+        # Never install a system with a public, fixed root password.
+        chroot("passwd -l root")
         # sudoers
         sudoers = f"{MOUNT_PT}/etc/sudoers.d/jenteck"
         os.makedirs(os.path.dirname(sudoers), exist_ok=True)
